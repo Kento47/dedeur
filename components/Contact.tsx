@@ -2,17 +2,17 @@
 import React, { useState, useEffect } from 'react';
 import { SectionId, AppSettings } from '../types';
 import { MapPin, Phone, Mail, ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
-import { getAppSettings, addContactMessage } from '../services/authService';
+import { getAppSettingsSync, addContactMessage } from '../services/authService';
 
 const Contact: React.FC = () => {
-  const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [settings, setSettings] = useState<AppSettings>(getAppSettingsSync());
   const [form, setForm] = useState({ name: '', phone: '', email: '', message: '' });
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const update = () => setSettings(getAppSettings());
+    const update = () => setSettings(getAppSettingsSync());
     window.addEventListener('settings-updated', update);
     return () => window.removeEventListener('settings-updated', update);
   }, []);

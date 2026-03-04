@@ -2,15 +2,15 @@
 import React, { useState, useEffect } from 'react';
 import DocumentationPage from './DocumentationPage';
 import { User, VisitorLog, AppSettings, Appointment, BeliefItem, ChurchItem, EventFlyer, MediaItem, ServiceTime } from '../types';
-import { 
-  saveEmbedCode, getEmbedCode, logout, 
-  getUsers, addUser, deleteUser,
+import {
+  saveEmbedCode, getEmbedCode, logout,
+  getUsers, addUser, deleteUser, updateUser,
   getVisitorLogs, addVisitorLog, deleteVisitorLog,
   getAppSettings, saveAppSettings,
   getAppointments, updateAppointmentStatus, deleteAppointment,
-  deletePrayerSubmission, deleteConversionSubmission,
+  getPrayerSubmissions, deletePrayerSubmission,
+  getConversionSubmissions, deleteConversionSubmission,
   getContactMessages, markContactMessageRead, deleteContactMessage, ContactMessage,
-  updateUser
 } from '../services/authService';
 import { 
   getAiSettings, saveAiSettings, AiSettings, OPENROUTER_MODELS, checkRateLimit, clearChatHistory, sendMessageToOpenRouter
@@ -47,18 +47,18 @@ const UsersView: React.FC<UsersViewProps> = ({ usersList, setUsersList, showSucc
     setEditForm({ name: u.name, email: u.email, role: u.role as 'admin' | 'user', password: '' });
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editingId) return;
     const updates: Partial<User> = { name: editForm.name, email: editForm.email, role: editForm.role };
     if (editForm.password.trim()) updates.password = editForm.password;
-    setUsersList(updateUser(editingId, updates));
+    setUsersList(await updateUser(editingId, updates));
     setEditingId(null);
     showSuccess('Gebruiker bijgewerkt');
   };
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!newUser.email || !newUser.password || !newUser.name) return;
-    const updated = addUser({ ...newUser, id: Date.now().toString() });
+    const updated = await addUser({ ...newUser, id: Date.now().toString() });
     setUsersList(updated);
     setNewUser({ name: '', email: '', role: 'user', password: '' });
     setShowAddForm(false);
@@ -195,7 +195,7 @@ const UsersView: React.FC<UsersViewProps> = ({ usersList, setUsersList, showSucc
                       <Pencil className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => { if(confirm(`'${u.name}' verwijderen?`)) setUsersList(deleteUser(u.id)); }}
+                      onClick={async () => { if(confirm(`'${u.name}' verwijderen?`)) setUsersList(await deleteUser(u.id)); }}
                       className="p-2 bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200 rounded-lg transition-all"
                       title="Verwijderen"
                     >
@@ -225,7 +225,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [cmsSection, setCmsSection] = useState<CmsSection>('branding');
   const [isCmsDropdownOpen, setIsCmsDropdownOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
-  const [appSettings, setAppSettings] = useState<AppSettings>(getAppSettings());
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [embedHtml, setEmbedHtml] = useState(getEmbedCode());
   const [usersList, setUsersList] = useState<User[]>([]);
   const [visitorLogs, setVisitorLogs] = useState<VisitorLog[]>([]);
@@ -235,7 +235,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [responsesTab, setResponsesTab] = useState<'prayer' | 'conversion' | 'appointment'>('prayer');
 
   // Contact messages state
-  const [contactMessages, setContactMessages] = useState<ContactMessage[]>(() => getContactMessages());
+  const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
 
   // AI Settings state
   const [aiSettings, setAiSettings] = useState<AiSettings>(() => getAiSettings());
@@ -258,15 +258,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   useEffect(() => { refreshData(); }, []);
 
-  const refreshData = () => {
-    const settings = getAppSettings();
+  const refreshData = async () => {
+    const [settings, users, visitors, appts, prayers, conversions, messages] = await Promise.all([
+      getAppSettings(),
+      getUsers(),
+      getVisitorLogs(),
+      getAppointments(),
+      getPrayerSubmissions(),
+      getConversionSubmissions(),
+      getContactMessages(),
+    ]);
     setAppSettings(settings);
-    setUsersList(getUsers());
-    setVisitorLogs(getVisitorLogs());
-    setAppointments(getAppointments());
+    setUsersList(users);
+    setVisitorLogs(visitors);
+    setAppointments(appts);
+    setPrayerSubmissions(prayers);
+    setConversionSubmissions(conversions);
+    setContactMessages(messages);
     setEmbedHtml(getEmbedCode());
-    setPrayerSubmissions(JSON.parse(localStorage.getItem('prayer_submissions') || '[]'));
-    setConversionSubmissions(JSON.parse(localStorage.getItem('conversion_submissions') || '[]'));
   };
 
   const showSuccess = (msg: string) => {
@@ -274,8 +283,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     setTimeout(() => setSuccessMsg(''), 3000);
   };
 
-  const handleSaveSettings = () => {
-    saveAppSettings(appSettings);
+  const handleSaveSettings = async () => {
+    if (!appSettings) return;
+    await saveAppSettings(appSettings);
     if (cmsSection === 'agenda') saveEmbedCode(embedHtml);
     showSuccess('Wijzigingen succesvol opgeslagen!');
   };
@@ -329,41 +339,42 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     setNewChurch({ name: '', location: '', imageUrl: '', websiteUrl: '' });
   };
 
-  const handleDeleteItem = (id: string, key: 'serviceTimes' | 'beliefs' | 'churchesSuriname' | 'churchesInternational' | 'flyers' | 'recentSermons') => {
-    const updated = { ...appSettings, [key]: appSettings[key].filter((item: any) => item.id !== id) };
+  const handleDeleteItem = async (id: string, key: 'serviceTimes' | 'beliefs' | 'churchesSuriname' | 'churchesInternational' | 'flyers' | 'recentSermons') => {
+    if (!appSettings) return;
+    const updated = { ...appSettings, [key]: (appSettings[key] as any[]).filter((item: any) => item.id !== id) };
     setAppSettings(updated);
-    saveAppSettings(updated);
+    await saveAppSettings(updated);
   };
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!newUser.email || !newUser.password) return;
-    const updated = addUser({ ...newUser, id: Date.now().toString() });
+    const updated = await addUser({ ...newUser, id: Date.now().toString() });
     setUsersList(updated);
     setNewUser({ name: '', email: '', role: 'user', password: '' });
     showSuccess('Gebruiker toegevoegd');
   };
 
-  const handleAddVisitorLog = () => {
-    const updated = addVisitorLog(newVisitorLog);
+  const handleAddVisitorLog = async () => {
+    const updated = await addVisitorLog(newVisitorLog);
     setVisitorLogs(updated);
     setNewVisitorLog({ date: new Date().toISOString().split('T')[0], serviceType: 'Zondag Ochtend', men: 0, women: 0, children: 0, newVisitors: 0, notes: '' });
     showSuccess('Statistiek toegevoegd');
   };
 
-  const handleAddFlyer = () => {
-    if (!newFlyer.imageUrl) return;
+  const handleAddFlyer = async () => {
+    if (!newFlyer.imageUrl || !appSettings) return;
     const updated = { ...appSettings, flyers: [...(appSettings.flyers || []), { ...newFlyer, id: Date.now().toString() }] };
     setAppSettings(updated);
-    saveAppSettings(updated);
+    await saveAppSettings(updated);
     setNewFlyer({ title: '', imageUrl: '' });
     showSuccess('Flyer toegevoegd');
   };
 
-  const handleAddMedia = () => {
-    if (!newMedia.videoUrl) return;
+  const handleAddMedia = async () => {
+    if (!newMedia.videoUrl || !appSettings) return;
     const updated = { ...appSettings, recentSermons: [...(appSettings.recentSermons || []), { ...newMedia, id: Date.now().toString() }] };
     setAppSettings(updated);
-    saveAppSettings(updated);
+    await saveAppSettings(updated);
     setNewMedia({ title: '', preacher: '', date: new Date().toLocaleDateString(), videoUrl: '' });
     showSuccess('Media item toegevoegd');
   };
@@ -778,7 +789,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                {prayerSubmissions.length > 0 ? prayerSubmissions.map(p => (
                                   <div key={p.id} className="p-6 bg-slate-50 rounded-2xl border group relative">
                                      <button 
-                                       onClick={() => { if(confirm('Verwijderen?')) { setPrayerSubmissions(deletePrayerSubmission(p.id)); showSuccess('Verwijderd'); } }}
+                                       onClick={async () => { if(confirm('Verwijderen?')) { setPrayerSubmissions(await deletePrayerSubmission(p.id)); showSuccess('Verwijderd'); } }}
                                        className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                                      >
                                         <Trash2 className="w-4 h-4" />
@@ -804,7 +815,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                {conversionSubmissions.length > 0 ? conversionSubmissions.map(c => (
                                   <div key={c.id} className="p-6 bg-slate-50 rounded-2xl border group relative">
                                      <button 
-                                       onClick={() => { if(confirm('Verwijderen?')) { setConversionSubmissions(deleteConversionSubmission(c.id)); showSuccess('Verwijderd'); } }}
+                                       onClick={async () => { if(confirm('Verwijderen?')) { setConversionSubmissions(await deleteConversionSubmission(c.id)); showSuccess('Verwijderd'); } }}
                                        className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                                      >
                                         <Trash2 className="w-4 h-4" />
@@ -836,7 +847,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                      <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <select 
                                           value={a.status} 
-                                          onChange={(e) => { setAppointments(updateAppointmentStatus(a.id, e.target.value as any)); showSuccess('Status bijgewerkt'); }}
+                                          onChange={async (e) => { setAppointments(await updateAppointmentStatus(a.id, e.target.value as any)); showSuccess('Status bijgewerkt'); }}
                                           className="text-[10px] font-bold uppercase bg-white border rounded p-1"
                                         >
                                            <option value="new">Nieuw</option>
@@ -844,7 +855,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                            <option value="completed">Voltooid</option>
                                         </select>
                                         <button 
-                                          onClick={() => { if(confirm('Verwijderen?')) { setAppointments(deleteAppointment(a.id)); showSuccess('Verwijderd'); } }}
+                                          onClick={async () => { if(confirm('Verwijderen?')) { setAppointments(await deleteAppointment(a.id)); showSuccess('Verwijderd'); } }}
                                           className="p-2 text-slate-300 hover:text-red-500"
                                         >
                                            <Trash2 className="w-4 h-4" />
@@ -883,7 +894,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                           <thead><tr className="border-b text-slate-400 uppercase text-[10px]"><th className="pb-2">Datum</th><th className="pb-2 text-center">M</th><th className="pb-2 text-center">V</th><th className="pb-2 text-center">K</th><th className="pb-2 text-center">Totaal</th><th className="pb-2"></th></tr></thead>
                           <tbody className="divide-y">
                              {visitorLogs.map(l => (
-                                <tr key={l.id}><td className="py-3 font-bold">{l.date}</td><td className="text-center">{l.men}</td><td className="text-center">{l.women}</td><td className="text-center">{l.children}</td><td className="text-center font-bold text-brand-blue">{l.total}</td><td><button onClick={() => { deleteVisitorLog(l.id); refreshData(); }} className="text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button></td></tr>
+                                <tr key={l.id}><td className="py-3 font-bold">{l.date}</td><td className="text-center">{l.men}</td><td className="text-center">{l.women}</td><td className="text-center">{l.children}</td><td className="text-center font-bold text-brand-blue">{l.total}</td><td><button onClick={async () => { setVisitorLogs(await deleteVisitorLog(l.id)); }} className="text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button></td></tr>
                              ))}
                           </tbody>
                        </table>
@@ -924,9 +935,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       </h3>
                       {contactMessages.length > 0 && (
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             if (confirm('Alle berichten verwijderen?')) {
-                              contactMessages.forEach(m => deleteContactMessage(m.id));
+                              await Promise.all(contactMessages.map(m => deleteContactMessage(m.id)));
                               setContactMessages([]);
                               showSuccess('Alle berichten verwijderd');
                             }
@@ -948,14 +959,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                         <div key={msg.id} className={`p-5 rounded-2xl border group relative transition-all ${msg.read ? 'bg-slate-50 border-slate-100' : 'bg-blue-50/50 border-blue-200'}`}>
                           <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
-                              onClick={() => { const updated = markContactMessageRead(msg.id); setContactMessages(updated); }}
+                              onClick={async () => { setContactMessages(await markContactMessageRead(msg.id)); }}
                               className="p-1.5 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-brand-blue text-[10px] flex items-center gap-1"
                               title={msg.read ? 'Al gelezen' : 'Markeer als gelezen'}
                             >
                               {msg.read ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                             </button>
                             <button
-                              onClick={() => { if (confirm('Verwijderen?')) { const updated = deleteContactMessage(msg.id); setContactMessages(updated); showSuccess('Bericht verwijderd'); } }}
+                              onClick={async () => { if (confirm('Verwijderen?')) { setContactMessages(await deleteContactMessage(msg.id)); showSuccess('Bericht verwijderd'); } }}
                               className="p-1.5 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-red-500"
                             >
                               <Trash2 className="w-3.5 h-3.5" />

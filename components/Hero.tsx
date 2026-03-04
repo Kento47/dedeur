@@ -3,16 +3,16 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronDown, MapPin, PlayCircle } from 'lucide-react';
 import { SectionId, AppSettings } from '../types';
-import { getAppSettings } from '../services/authService';
+import { getAppSettingsSync } from '../services/authService';
 import * as THREE from 'three';
 
 const Hero: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
-  const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [settings, setSettings] = useState<AppSettings>(getAppSettingsSync());
 
   useEffect(() => {
     // Listen for setting changes
-    const update = () => setSettings(getAppSettings());
+    const update = () => setSettings(getAppSettingsSync());
     window.addEventListener('settings-updated', update);
     return () => window.removeEventListener('settings-updated', update);
   }, []);

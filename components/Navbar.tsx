@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, X, ChevronDown, User as UserIcon, LogIn, FileText, Globe } from 'lucide-react';
 import { NavItem, PageId, User, AppSettings } from '../types';
-import { getAppSettings } from '../services/authService';
+import { getAppSettingsSync } from '../services/authService';
 
 interface NavbarProps {
   onNavigate: (page: PageId) => void;
@@ -42,7 +42,7 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, currentPage, user }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
-  const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [settings, setSettings] = useState<AppSettings>(getAppSettingsSync());
 
   useEffect(() => {
     const handleScroll = () => {
@@ -50,7 +50,7 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, currentPage, user }) => {
     };
     window.addEventListener('scroll', handleScroll);
     
-    const update = () => setSettings(getAppSettings());
+    const update = () => setSettings(getAppSettingsSync());
     window.addEventListener('settings-updated', update);
 
     return () => {

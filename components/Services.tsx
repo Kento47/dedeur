@@ -3,13 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { SectionId, ServiceTime, AppSettings } from '../types';
 import { Clock, Mic2, Baby } from 'lucide-react';
-import { getAppSettings } from '../services/authService';
+import { getAppSettingsSync } from '../services/authService';
 
 const Services: React.FC = () => {
-  const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [settings, setSettings] = useState<AppSettings>(getAppSettingsSync());
 
   useEffect(() => {
-    const update = () => setSettings(getAppSettings());
+    const update = () => setSettings(getAppSettingsSync());
     window.addEventListener('settings-updated', update);
     return () => window.removeEventListener('settings-updated', update);
   }, []);

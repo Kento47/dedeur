@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Send, UserPlus, Phone, MapPin, CheckSquare, Save, ChevronRight, FileText, Calendar as CalendarIcon } from 'lucide-react';
-import { addAppointment } from '../services/authService';
+import { addAppointment, addPrayerSubmission, addConversionSubmission } from '../services/authService';
 
 const FormsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'prayer' | 'conversion' | 'appointment'>('prayer');
@@ -36,21 +36,17 @@ const FormsPage: React.FC = () => {
     reason: ''
   });
 
-  const handleFormSubmit = (e: React.FormEvent, formName: 'prayer' | 'conversion' | 'appointment') => {
+  const handleFormSubmit = async (e: React.FormEvent, formName: 'prayer' | 'conversion' | 'appointment') => {
     e.preventDefault();
-    
+
     const timestamp = new Date().toISOString();
     
     if (formName === 'prayer') {
-        const newSubmission = { ...prayerForm, id: Date.now(), timestamp };
-        const existing = JSON.parse(localStorage.getItem('prayer_submissions') || '[]');
-        localStorage.setItem('prayer_submissions', JSON.stringify([newSubmission, ...existing]));
+        await addPrayerSubmission({ ...prayerForm, id: Date.now(), timestamp });
     } else if (formName === 'conversion') {
-        const newSubmission = { ...conversionForm, id: Date.now(), timestamp };
-        const existing = JSON.parse(localStorage.getItem('conversion_submissions') || '[]');
-        localStorage.setItem('conversion_submissions', JSON.stringify([newSubmission, ...existing]));
+        await addConversionSubmission({ ...conversionForm, id: Date.now(), timestamp });
     } else {
-        addAppointment(appointmentForm);
+        await addAppointment(appointmentForm);
     }
 
     const msgMap = {

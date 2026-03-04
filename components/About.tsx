@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { SectionId, AppSettings } from '../types';
 import { Users, Zap, Globe2 } from 'lucide-react';
-import { getAppSettings } from '../services/authService';
+import { getAppSettingsSync } from '../services/authService';
 
 const features = [
   {
@@ -24,10 +24,10 @@ const features = [
 ];
 
 const About: React.FC = () => {
-  const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [settings, setSettings] = useState<AppSettings>(getAppSettingsSync());
 
   useEffect(() => {
-    const update = () => setSettings(getAppSettings());
+    const update = () => setSettings(getAppSettingsSync());
     window.addEventListener('settings-updated', update);
     return () => window.removeEventListener('settings-updated', update);
   }, []);

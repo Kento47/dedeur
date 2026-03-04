@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Calendar, Video, ArrowRight, User, Clock, MapPin, Phone, Send, CalendarCheck, Play, Plus, Minus, Globe, ExternalLink, Youtube } from 'lucide-react';
-import { getAppSettings, addAppointment, getEmbedCode } from '../services/authService';
+import { getAppSettingsSync, addAppointment, getEmbedCode } from '../services/authService';
 import { AppSettings, MediaItem, ChurchItem } from '../types';
 
 const PageHeader: React.FC<{ title: string; subtitle: string }> = ({ title, subtitle }) => (
@@ -27,7 +27,7 @@ const ChurchCard: React.FC<{ church: ChurchItem }> = ({ church }) => (
 );
 
 export const ChurchesSurinamePage: React.FC = () => {
-  const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [settings, setSettings] = useState<AppSettings>(getAppSettingsSync());
   return (
     <div className="min-h-screen bg-white pb-24">
       <PageHeader title="Kerken in Suriname" subtitle="Onze lokale gemeenschappen" />
@@ -37,7 +37,7 @@ export const ChurchesSurinamePage: React.FC = () => {
 };
 
 export const ChurchesInternationalPage: React.FC = () => {
-  const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [settings, setSettings] = useState<AppSettings>(getAppSettingsSync());
   return (
     <div className="min-h-screen bg-white pb-24">
       <PageHeader title="Wereldwijd Netwerk" subtitle="Onderdeel van CFM" />
@@ -47,7 +47,7 @@ export const ChurchesInternationalPage: React.FC = () => {
 };
 
 export const BeliefsPage: React.FC = () => {
-  const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [settings, setSettings] = useState<AppSettings>(getAppSettingsSync());
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   return (
     <div className="min-h-screen bg-white">
@@ -67,7 +67,7 @@ export const BeliefsPage: React.FC = () => {
 };
 
 export const PastorPage: React.FC = () => {
-  const settings = getAppSettings();
+  const settings = getAppSettingsSync();
   return (
     <div className="min-h-screen bg-white pb-24">
       <PageHeader title="Onze Pastor" subtitle={settings.pastor.name} />
@@ -103,10 +103,10 @@ export const CalendarPage: React.FC = () => {
 };
 
 export const MediaPage: React.FC = () => {
-  const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [settings, setSettings] = useState<AppSettings>(getAppSettingsSync());
 
   useEffect(() => {
-    const update = () => setSettings(getAppSettings());
+    const update = () => setSettings(getAppSettingsSync());
     window.addEventListener('settings-updated', update);
     return () => window.removeEventListener('settings-updated', update);
   }, []);

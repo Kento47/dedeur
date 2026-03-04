@@ -13,7 +13,7 @@ import Dashboard from './components/Dashboard';
 import FormsPage from './components/FormsPage';
 import { BeliefsPage, PastorPage, CalendarPage, MediaPage, ChurchesSurinamePage, ChurchesInternationalPage, PrivacyPage, CookiesPage } from './components/SubPages';
 import { PageId, User, AppSettings } from './types';
-import { getCurrentUser, getAppSettings } from './services/authService';
+import { getCurrentUser, getAppSettings, getAppSettingsSync } from './services/authService';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cookie, X } from 'lucide-react';
 
@@ -63,22 +63,28 @@ const CookieConsent: React.FC = () => {
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<PageId>('home');
   const [user, setUser] = useState<User | null>(null);
-  const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [settings, setSettings] = useState<AppSettings>(getAppSettingsSync());
 
   useEffect(() => {
     setUser(getCurrentUser());
-    
-    // Apply branding colors
-    const applyBranding = () => {
-      const currentSettings = getAppSettings();
+
+    const applyBranding = async () => {
+      const currentSettings = await getAppSettings();
+      setSettings(currentSettings);
+      document.documentElement.style.setProperty('--brand-blue', currentSettings.branding.primaryColor);
+      document.documentElement.style.setProperty('--brand-red', currentSettings.branding.secondaryColor);
+    };
+
+    const applyBrandingSync = () => {
+      const currentSettings = getAppSettingsSync();
       setSettings(currentSettings);
       document.documentElement.style.setProperty('--brand-blue', currentSettings.branding.primaryColor);
       document.documentElement.style.setProperty('--brand-red', currentSettings.branding.secondaryColor);
     };
 
     applyBranding();
-    window.addEventListener('settings-updated', applyBranding);
-    return () => window.removeEventListener('settings-updated', applyBranding);
+    window.addEventListener('settings-updated', applyBrandingSync);
+    return () => window.removeEventListener('settings-updated', applyBrandingSync);
   }, []);
 
   const handleLoginSuccess = (loggedInUser: User) => {

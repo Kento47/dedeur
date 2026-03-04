@@ -1,35 +1,69 @@
 
 import { User, VisitorLog, AppSettings, Appointment } from '../types';
 
-const STORAGE_USERS_KEY = 'app_users';
-const STORAGE_VISITORS_KEY = 'app_visitor_logs';
-const EMBED_STORAGE_KEY = 'service_embed_html';
-const STORAGE_SETTINGS_KEY = 'app_settings';
-const STORAGE_APPOINTMENTS_KEY = 'app_appointments';
+const API = '/api';
 
-const DEFAULT_USERS: User[] = [
-  {
-    id: '0',
-    name: import.meta.env.VITE_SUPER_ADMIN_NAME || 'Super User',
-    email: import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'admin@admin.com',
-    role: 'admin',
-    password: import.meta.env.VITE_SUPER_ADMIN_PASSWORD || 'admin123'
-  },
-  {
-    id: '1',
-    name: import.meta.env.VITE_CHURCH_ADMIN_NAME || 'Beheerder Lelydorp',
-    email: import.meta.env.VITE_CHURCH_ADMIN_EMAIL || 'admin@dedeurlelydorp.com',
-    role: 'admin',
-    password: import.meta.env.VITE_CHURCH_ADMIN_PASSWORD || 'admin123'
-  },
-  {
-    id: '2',
-    name: import.meta.env.VITE_MEMBER_NAME || 'Gemeentelid',
-    email: import.meta.env.VITE_MEMBER_EMAIL || 'lid@dedeurlelydorp.com',
-    role: 'user',
-    password: import.meta.env.VITE_MEMBER_PASSWORD || 'lid123'
+// ============================================================
+// Helper
+// ============================================================
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Onbekende fout' }));
+    throw new Error(err.error || `HTTP ${res.status}`);
   }
-];
+  return res.json();
+}
+
+// ============================================================
+// Auth
+// ============================================================
+export const login = async (email: string, password: string): Promise<User> => {
+  const user = await apiFetch<User>('/auth.php', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+  localStorage.setItem('currentUser', JSON.stringify(user));
+  return user;
+};
+
+export const logout = () => { localStorage.removeItem('currentUser'); };
+
+export const getCurrentUser = (): User | null => {
+  try {
+    const s = localStorage.getItem('currentUser');
+    return s ? JSON.parse(s) : null;
+  } catch { return null; }
+};
+
+// ============================================================
+// Users
+// ============================================================
+export const getUsers = async (): Promise<User[]> => {
+  return apiFetch<User[]>('/users.php');
+};
+
+export const addUser = async (user: Omit<User, 'id'>): Promise<User[]> => {
+  await apiFetch('/users.php', { method: 'POST', body: JSON.stringify(user) });
+  return getUsers();
+};
+
+export const updateUser = async (id: string, updates: Partial<User>): Promise<User[]> => {
+  await apiFetch('/users.php', { method: 'PUT', body: JSON.stringify({ id, ...updates }) });
+  return getUsers();
+};
+
+export const deleteUser = async (id: string): Promise<User[]> => {
+  await apiFetch(`/users.php?id=${id}`, { method: 'DELETE' });
+  return getUsers();
+};
+
+// ============================================================
+// App Settings
+// ============================================================
 
 const DEFAULT_SETTINGS: AppSettings = {
   branding: {
@@ -78,166 +112,140 @@ const DEFAULT_SETTINGS: AppSettings = {
   churchesInternational: [
     { id: '1', name: 'The Door Prescott', location: 'Prescott, Arizona, USA', imageUrl: 'https://images.unsplash.com/photo-1438032005730-c779502df39b?q=80&w=1000&auto=format&fit=crop', websiteUrl: 'https://www.prescottpottershouse.com' }
   ],
-  youtubeLink: 'https://www.youtube.com/embed/live_stream?channel=UCxxxxxxxx', 
+  youtubeLink: 'https://www.youtube.com/embed/live_stream?channel=UCxxxxxxxx',
   flyers: [],
   pastor: {
     name: "Pastor Arjan Draaijer",
     title: "Pastor & Echtgenote",
-    imageUrl: "https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=1000&auto=format&fit=crop", 
+    imageUrl: "https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=1000&auto=format&fit=crop",
     bio: "Welkom bij De Deur Lelydorp."
   },
   recentSermons: []
 };
 
-export const getAppSettings = (): AppSettings => {
-    try {
-        const stored = localStorage.getItem(STORAGE_SETTINGS_KEY);
-        if (!stored) {
-            localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(DEFAULT_SETTINGS));
-            return DEFAULT_SETTINGS;
-        }
-        const parsed = JSON.parse(stored);
-        
-        return { 
-          ...DEFAULT_SETTINGS, 
-          ...parsed,
-          beliefs: (!parsed.beliefs || parsed.beliefs.length === 0) ? DEFAULT_SETTINGS.beliefs : parsed.beliefs,
-          serviceTimes: (!parsed.serviceTimes || parsed.serviceTimes.length === 0) ? DEFAULT_SETTINGS.serviceTimes : parsed.serviceTimes
-        };
-    } catch (e) {
-        return DEFAULT_SETTINGS;
+export const getAppSettings = async (): Promise<AppSettings> => {
+  try {
+    const data = await apiFetch<AppSettings | null>('/settings.php');
+    if (!data) return DEFAULT_SETTINGS;
+    const merged = {
+      ...DEFAULT_SETTINGS,
+      ...data,
+      beliefs: (!data.beliefs || data.beliefs.length === 0) ? DEFAULT_SETTINGS.beliefs : data.beliefs,
+      serviceTimes: (!data.serviceTimes || data.serviceTimes.length === 0) ? DEFAULT_SETTINGS.serviceTimes : data.serviceTimes,
+    };
+    localStorage.setItem('app_settings_cache', JSON.stringify(merged));
+    return merged;
+  } catch {
+    return getAppSettingsSync();
+  }
+};
+
+// Sync versie leest uit localStorage-cache (voor componenten die sync initialisatie nodig hebben)
+export const getAppSettingsSync = (): AppSettings => {
+  try {
+    const cached = localStorage.getItem('app_settings_cache');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      return { ...DEFAULT_SETTINGS, ...parsed,
+        beliefs: (!parsed.beliefs || parsed.beliefs.length === 0) ? DEFAULT_SETTINGS.beliefs : parsed.beliefs,
+        serviceTimes: (!parsed.serviceTimes || parsed.serviceTimes.length === 0) ? DEFAULT_SETTINGS.serviceTimes : parsed.serviceTimes,
+      };
     }
+  } catch { /* ignore */ }
+  return DEFAULT_SETTINGS;
 };
 
-export const saveAppSettings = (settings: AppSettings) => {
-    localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(settings));
-    window.dispatchEvent(new Event('settings-updated'));
+export const saveAppSettings = async (settings: AppSettings): Promise<void> => {
+  await apiFetch('/settings.php', { method: 'POST', body: JSON.stringify(settings) });
+  localStorage.setItem('app_settings_cache', JSON.stringify(settings));
+  window.dispatchEvent(new Event('settings-updated'));
 };
 
-export const getAppointments = (): Appointment[] => {
-    try {
-        const stored = localStorage.getItem(STORAGE_APPOINTMENTS_KEY);
-        return stored ? JSON.parse(stored) : [];
-    } catch(e) { return []; }
+// ============================================================
+// Appointments
+// ============================================================
+export const getAppointments = async (): Promise<Appointment[]> => {
+  return apiFetch<Appointment[]>('/appointments.php');
 };
 
-export const addAppointment = (appt: Omit<Appointment, 'id' | 'status' | 'date'>) => {
-    const appts = getAppointments();
-    const newAppt: Appointment = { ...appt, id: Date.now(), date: new Date().toISOString(), status: 'new' };
-    const newAppts = [newAppt, ...appts];
-    localStorage.setItem(STORAGE_APPOINTMENTS_KEY, JSON.stringify(newAppts));
-    return newAppts;
+export const addAppointment = async (appt: Omit<Appointment, 'id' | 'status' | 'date'>): Promise<Appointment[]> => {
+  const newAppt = { ...appt, id: Date.now(), date: new Date().toISOString(), status: 'new' as const };
+  await apiFetch('/appointments.php', { method: 'POST', body: JSON.stringify(newAppt) });
+  return getAppointments();
 };
 
-export const updateAppointmentStatus = (id: number, status: Appointment['status']) => {
-    const appts = getAppointments();
-    const newAppts = appts.map(a => a.id === id ? { ...a, status } : a);
-    localStorage.setItem(STORAGE_APPOINTMENTS_KEY, JSON.stringify(newAppts));
-    return newAppts;
+export const updateAppointmentStatus = async (id: number, status: Appointment['status']): Promise<Appointment[]> => {
+  await apiFetch('/appointments.php', { method: 'PUT', body: JSON.stringify({ id, status }) });
+  return getAppointments();
 };
 
-export const deleteAppointment = (id: number) => {
-    const appts = getAppointments();
-    const newAppts = appts.filter(a => a.id !== id);
-    localStorage.setItem(STORAGE_APPOINTMENTS_KEY, JSON.stringify(newAppts));
-    return newAppts;
+export const deleteAppointment = async (id: number): Promise<Appointment[]> => {
+  await apiFetch(`/appointments.php?id=${id}`, { method: 'DELETE' });
+  return getAppointments();
 };
 
-export const getUsers = (): User[] => {
-  const stored = localStorage.getItem(STORAGE_USERS_KEY);
-  if (!stored) {
-    localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(DEFAULT_USERS));
-    return DEFAULT_USERS;
-  }
-  try { return JSON.parse(stored); } catch (e) { return DEFAULT_USERS; }
+// ============================================================
+// Visitor Logs
+// ============================================================
+export const getVisitorLogs = async (): Promise<VisitorLog[]> => {
+  return apiFetch<VisitorLog[]>('/visitors.php');
 };
 
-export const addUser = (user: User) => {
-  const users = getUsers();
-  const newUsers = [...users, { ...user, id: Date.now().toString() }];
-  localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(newUsers));
-  return newUsers;
+export const addVisitorLog = async (log: Omit<VisitorLog, 'id' | 'total'>): Promise<VisitorLog[]> => {
+  const newLog = { ...log, id: Date.now() };
+  await apiFetch('/visitors.php', { method: 'POST', body: JSON.stringify(newLog) });
+  return getVisitorLogs();
 };
 
-export const updateUser = (id: string, updates: Partial<User>): User[] => {
-  const users = getUsers();
-  const newUsers = users.map(u => u.id === id ? { ...u, ...updates } : u);
-  localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(newUsers));
-  return newUsers;
+export const deleteVisitorLog = async (id: number): Promise<VisitorLog[]> => {
+  await apiFetch(`/visitors.php?id=${id}`, { method: 'DELETE' });
+  return getVisitorLogs();
 };
 
-export const deleteUser = (id: string) => {
-  const users = getUsers();
-  const newUsers = users.filter(u => u.id !== id);
-  localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(newUsers));
-  return newUsers;
-};
-
-export const login = async (email: string, password: string): Promise<User> => {
-  const users = getUsers();
-  const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
-  if (user) {
-    localStorage.setItem('currentUser', JSON.stringify(user));
-    return user;
-  }
-  throw new Error('Ongeldige inloggegevens.');
-};
-
-export const logout = () => { localStorage.removeItem('currentUser'); };
-export const getCurrentUser = (): User | null => {
-  try {
-    const userStr = localStorage.getItem('currentUser');
-    return userStr ? JSON.parse(userStr) : null;
-  } catch (e) { return null; }
-};
-
-export const getVisitorLogs = (): VisitorLog[] => {
-  try {
-    const stored = localStorage.getItem(STORAGE_VISITORS_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch (e) { return []; }
-};
-
-export const addVisitorLog = (log: Omit<VisitorLog, 'id' | 'total'>) => {
-  const logs = getVisitorLogs();
-  const total = (Number(log.men) || 0) + (Number(log.women) || 0) + (Number(log.children) || 0);
-  const newLog: VisitorLog = { ...log, id: Date.now(), total };
-  const newLogs = [newLog, ...logs];
-  localStorage.setItem(STORAGE_VISITORS_KEY, JSON.stringify(newLogs));
-  return newLogs;
-};
-
-export const deleteVisitorLog = (id: number) => {
-    const logs = getVisitorLogs();
-    const newLogs = logs.filter(l => l.id !== id);
-    localStorage.setItem(STORAGE_VISITORS_KEY, JSON.stringify(newLogs));
-    return newLogs;
-}
-
+// ============================================================
+// Embed Code (blijft in localStorage — is geen gedeelde data)
+// ============================================================
+const EMBED_STORAGE_KEY = 'service_embed_html';
 export const saveEmbedCode = (html: string) => { localStorage.setItem(EMBED_STORAGE_KEY, html); };
 export const getEmbedCode = (): string => {
   return localStorage.getItem(EMBED_STORAGE_KEY) || '<iframe src="https://calendar.google.com/calendar/embed?src=nl.dutch%23holiday%40group.v.calendar.google.com&ctz=America%2FParamaribo" style="border: 0" width="100%" height="600" frameborder="0" scrolling="no"></iframe>';
 };
 
-export const deletePrayerSubmission = (id: number) => {
-    const existing = JSON.parse(localStorage.getItem('prayer_submissions') || '[]');
-    const updated = existing.filter((p: any) => p.id !== id);
-    localStorage.setItem('prayer_submissions', JSON.stringify(updated));
-    return updated;
+// ============================================================
+// Prayer Submissions
+// ============================================================
+export const getPrayerSubmissions = async (): Promise<any[]> => {
+  return apiFetch<any[]>('/prayer.php');
 };
 
-export const deleteConversionSubmission = (id: number) => {
-    const existing = JSON.parse(localStorage.getItem('conversion_submissions') || '[]');
-    const updated = existing.filter((c: any) => c.id !== id);
-    localStorage.setItem('conversion_submissions', JSON.stringify(updated));
-    return updated;
+export const addPrayerSubmission = async (submission: any): Promise<void> => {
+  await apiFetch('/prayer.php', { method: 'POST', body: JSON.stringify(submission) });
+};
+
+export const deletePrayerSubmission = async (id: number): Promise<any[]> => {
+  await apiFetch(`/prayer.php?id=${id}`, { method: 'DELETE' });
+  return getPrayerSubmissions();
 };
 
 // ============================================================
-// Contact Messages (from contact form on website)
+// Conversion Submissions
 // ============================================================
-const CONTACT_MESSAGES_KEY = 'contact_messages';
+export const getConversionSubmissions = async (): Promise<any[]> => {
+  return apiFetch<any[]>('/conversion.php');
+};
 
+export const addConversionSubmission = async (submission: any): Promise<void> => {
+  await apiFetch('/conversion.php', { method: 'POST', body: JSON.stringify(submission) });
+};
+
+export const deleteConversionSubmission = async (id: number): Promise<any[]> => {
+  await apiFetch(`/conversion.php?id=${id}`, { method: 'DELETE' });
+  return getConversionSubmissions();
+};
+
+// ============================================================
+// Contact Messages
+// ============================================================
 export interface ContactMessage {
   id: number;
   name: string;
@@ -248,40 +256,27 @@ export interface ContactMessage {
   read: boolean;
 }
 
-export const getContactMessages = (): ContactMessage[] => {
-  try {
-    const stored = localStorage.getItem(CONTACT_MESSAGES_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch { return []; }
+export const getContactMessages = async (): Promise<ContactMessage[]> => {
+  return apiFetch<ContactMessage[]>('/messages.php');
 };
 
-export const addContactMessage = (msg: Omit<ContactMessage, 'id' | 'timestamp' | 'read'>): ContactMessage[] => {
-  const messages = getContactMessages();
-  const newMsg: ContactMessage = {
-    ...msg,
-    id: Date.now(),
-    timestamp: new Date().toISOString(),
-    read: false,
-  };
-  const updated = [newMsg, ...messages];
-  localStorage.setItem(CONTACT_MESSAGES_KEY, JSON.stringify(updated));
-  return updated;
+export const addContactMessage = async (msg: Omit<ContactMessage, 'id' | 'timestamp' | 'read'>): Promise<ContactMessage[]> => {
+  const newMsg = { ...msg, id: Date.now(), timestamp: new Date().toISOString() };
+  await apiFetch('/messages.php', { method: 'POST', body: JSON.stringify(newMsg) });
+  return getContactMessages();
 };
 
-export const markContactMessageRead = (id: number): ContactMessage[] => {
-  const messages = getContactMessages();
-  const updated = messages.map(m => m.id === id ? { ...m, read: true } : m);
-  localStorage.setItem(CONTACT_MESSAGES_KEY, JSON.stringify(updated));
-  return updated;
+export const markContactMessageRead = async (id: number): Promise<ContactMessage[]> => {
+  await apiFetch('/messages.php', { method: 'PUT', body: JSON.stringify({ id }) });
+  return getContactMessages();
 };
 
-export const deleteContactMessage = (id: number): ContactMessage[] => {
-  const messages = getContactMessages();
-  const updated = messages.filter(m => m.id !== id);
-  localStorage.setItem(CONTACT_MESSAGES_KEY, JSON.stringify(updated));
-  return updated;
+export const deleteContactMessage = async (id: number): Promise<ContactMessage[]> => {
+  await apiFetch(`/messages.php?id=${id}`, { method: 'DELETE' });
+  return getContactMessages();
 };
 
-export const getUnreadContactCount = (): number => {
-  return getContactMessages().filter(m => !m.read).length;
+export const getUnreadContactCount = async (): Promise<number> => {
+  const msgs = await getContactMessages();
+  return msgs.filter(m => !m.read).length;
 };

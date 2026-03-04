@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { EventFlyer } from '../types';
-import { getAppSettings } from '../services/authService';
+import { getAppSettingsSync } from '../services/authService';
 import { ChevronLeft, ChevronRight, ImageIcon, X, ZoomIn } from 'lucide-react';
 
 const EventCarousel: React.FC = () => {
@@ -21,7 +21,7 @@ const EventCarousel: React.FC = () => {
 
     // Data loader
     const loadSettings = () => {
-        const settings = getAppSettings();
+        const settings = getAppSettingsSync();
         setFlyers(settings.flyers || []);
     };
     loadSettings();

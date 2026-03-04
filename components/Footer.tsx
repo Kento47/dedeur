@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { getAppSettings } from '../services/authService';
+import { getAppSettingsSync } from '../services/authService';
 import { AppSettings } from '../types';
 
 interface FooterProps {
@@ -8,10 +8,10 @@ interface FooterProps {
 }
 
 const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
-  const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [settings, setSettings] = useState<AppSettings>(getAppSettingsSync());
 
   useEffect(() => {
-    const update = () => setSettings(getAppSettings());
+    const update = () => setSettings(getAppSettingsSync());
     window.addEventListener('settings-updated', update);
     return () => window.removeEventListener('settings-updated', update);
   }, []);
