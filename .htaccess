@@ -1,0 +1,18 @@
+RewriteEngine On
+
+# API verzoeken direct doorsturen
+RewriteRule ^api/ - [L]
+
+# Bestaande bestanden/mappen direct serveren
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Root → dist/index.html
+RewriteRule ^$ dist/index.html [L]
+
+# Statische assets vanuit dist/
+RewriteRule ^(assets/.*)$ dist/$1 [L]
+
+# Alles overige → dist/index.html (React SPA fallback)
+RewriteRule ^ dist/index.html [L]
